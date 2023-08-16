@@ -20,536 +20,355 @@
     pete@shinners.org
 */
 
-#ifndef _PYGAME_H
-#define _PYGAME_H
-
-/** This header file includes all the definitions for the
- ** base pygame extensions. This header only requires
- ** Python includes (and SDL.h for functions that use SDL types).
- ** The reason for functions prototyped with #define's is
- ** to allow for maximum Python portability. It also uses
- ** Python as the runtime linker, which allows for late binding.
- '' For more information on this style of development, read
- ** the Python docs on this subject.
- ** http://www.python.org/doc/current/ext/using-cobjects.html
- **
- ** If using this to build your own derived extensions,
- ** you'll see that the functions available here are mainly
- ** used to help convert between python objects and SDL objects.
- ** Since this library doesn't add a lot of functionality to
- ** the SDL library, it doesn't need to offer a lot either.
- **
- ** When initializing your extension module, you must manually
- ** import the modules you want to use. (this is the part about
- ** using python as the runtime linker). Each module has its
- ** own import_xxx() routine. You need to perform this import
- ** after you have initialized your own module, and before
- ** you call any routines from that module. Since every module
- ** in pygame does this, there are plenty of examples.
- **
- ** The base module does include some useful conversion routines
- ** that you are free to use in your own extension.
- **/
+/* This will use PYGAMEAPI_EXTERN_SLOTS instead
+ * of PYGAMEAPI_DEFINE_SLOTS for base modules.
+ */
+#ifndef _PYGAME_INTERNAL_H
+#define _PYGAME_INTERNAL_H
 
 #include "pgplatform.h"
+/*
+    If PY_SSIZE_T_CLEAN is defined before including Python.h, length is a
+    Py_ssize_t rather than an int for all # variants of formats (s#, y#, etc.)
+*/
+#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-/* version macros (defined since version 1.9.5) */
-#define PG_MAJOR_VERSION 2
-#define PG_MINOR_VERSION 3
-#define PG_PATCH_VERSION 0
-#define PG_VERSIONNUM(MAJOR, MINOR, PATCH) \
-    (1000 * (MAJOR) + 100 * (MINOR) + (PATCH))
-#define PG_VERSION_ATLEAST(MAJOR, MINOR, PATCH)                             \
-    (PG_VERSIONNUM(PG_MAJOR_VERSION, PG_MINOR_VERSION, PG_PATCH_VERSION) >= \
-     PG_VERSIONNUM(MAJOR, MINOR, PATCH))
-
-#include "pgcompat.h"
-
-/* Flag indicating a pg_buffer; used for assertions within callbacks */
-#ifndef NDEBUG
-#define PyBUF_PYGAME 0x4000
+/* Ensure PyPy-specific code is not in use when running on GraalPython (PR
+ * #2580) */
+#if defined(GRAALVM_PYTHON) && defined(PYPY_VERSION)
+#undef PYPY_VERSION
 #endif
-#define PyBUF_HAS_FLAG(f, F) (((f) & (F)) == (F))
 
-/* Array information exchange struct C type; inherits from Py_buffer
- *
- * Pygame uses its own Py_buffer derived C struct as an internal representation
- * of an imported array buffer. The extended Py_buffer allows for a
- * per-instance release callback,
- */
-typedef void (*pybuffer_releaseproc)(Py_buffer *);
+#include <SDL.h>
 
-typedef struct pg_bufferinfo_s {
-    Py_buffer view;
-    PyObject *consumer; /* Input: Borrowed reference */
-    pybuffer_releaseproc release_buffer;
-} pg_buffer;
+/* SDL 1.2 constants removed from SDL 2 */
+typedef enum {
+    SDL_HWSURFACE = 0,
+    SDL_RESIZABLE = SDL_WINDOW_RESIZABLE,
+    SDL_ASYNCBLIT = 0,
+    SDL_OPENGL = SDL_WINDOW_OPENGL,
+    SDL_OPENGLBLIT = 0,
+    SDL_ANYFORMAT = 0,
+    SDL_HWPALETTE = 0,
+    SDL_DOUBLEBUF = 0,
+    SDL_FULLSCREEN = SDL_WINDOW_FULLSCREEN,
+    SDL_HWACCEL = 0,
+    SDL_SRCCOLORKEY = 0,
+    SDL_RLEACCELOK = 0,
+    SDL_SRCALPHA = 0,
+    SDL_NOFRAME = SDL_WINDOW_BORDERLESS,
+    SDL_GL_SWAP_CONTROL = 0,
+    TIMER_RESOLUTION = 0
+} PygameVideoFlags;
 
-#include "pgimport.h"
+/* the wheel button constants were removed from SDL 2 */
+typedef enum {
+    PGM_BUTTON_LEFT = SDL_BUTTON_LEFT,
+    PGM_BUTTON_RIGHT = SDL_BUTTON_RIGHT,
+    PGM_BUTTON_MIDDLE = SDL_BUTTON_MIDDLE,
+    PGM_BUTTON_WHEELUP = 4,
+    PGM_BUTTON_WHEELDOWN = 5,
+    PGM_BUTTON_X1 = SDL_BUTTON_X1 + 2,
+    PGM_BUTTON_X2 = SDL_BUTTON_X2 + 2,
+    PGM_BUTTON_KEEP = 0x80
+} PygameMouseFlags;
 
-/*
- * BASE module
- */
-#ifndef PYGAMEAPI_BASE_INTERNAL
-#define pgExc_SDLError ((PyObject *)PYGAMEAPI_GET_SLOT(base, 0))
+typedef enum {
+    /* Any SDL_* events here are for backward compatibility. */
+    SDL_NOEVENT = 0,
 
-#define pg_RegisterQuit \
-    (*(void (*)(void (*)(void)))PYGAMEAPI_GET_SLOT(base, 1))
+    SDL_ACTIVEEVENT = SDL_USEREVENT,
+    SDL_VIDEORESIZE,
+    SDL_VIDEOEXPOSE,
 
-#define pg_IntFromObj \
-    (*(int (*)(PyObject *, int *))PYGAMEAPI_GET_SLOT(base, 2))
+    PGE_MIDIIN,
+    PGE_MIDIOUT,
+    PGE_KEYREPEAT, /* Special internal pygame event, for managing key-presses
+                    */
 
-#define pg_IntFromObjIndex \
-    (*(int (*)(PyObject *, int, int *))PYGAMEAPI_GET_SLOT(base, 3))
+    /* DO NOT CHANGE THE ORDER OF EVENTS HERE */
+    PGE_WINDOWSHOWN,
+    PGE_WINDOWHIDDEN,
+    PGE_WINDOWEXPOSED,
+    PGE_WINDOWMOVED,
+    PGE_WINDOWRESIZED,
+    PGE_WINDOWSIZECHANGED,
+    PGE_WINDOWMINIMIZED,
+    PGE_WINDOWMAXIMIZED,
+    PGE_WINDOWRESTORED,
+    PGE_WINDOWENTER,
+    PGE_WINDOWLEAVE,
+    PGE_WINDOWFOCUSGAINED,
+    PGE_WINDOWFOCUSLOST,
+    PGE_WINDOWCLOSE,
+    PGE_WINDOWTAKEFOCUS,
+    PGE_WINDOWHITTEST,
+    PGE_WINDOWICCPROFCHANGED,
+    PGE_WINDOWDISPLAYCHANGED,
 
-#define pg_TwoIntsFromObj \
-    (*(int (*)(PyObject *, int *, int *))PYGAMEAPI_GET_SLOT(base, 4))
-
-#define pg_FloatFromObj \
-    (*(int (*)(PyObject *, float *))PYGAMEAPI_GET_SLOT(base, 5))
-
-#define pg_FloatFromObjIndex \
-    (*(int (*)(PyObject *, int, float *))PYGAMEAPI_GET_SLOT(base, 6))
-
-#define pg_TwoFloatsFromObj \
-    (*(int (*)(PyObject *, float *, float *))PYGAMEAPI_GET_SLOT(base, 7))
-
-#define pg_UintFromObj \
-    (*(int (*)(PyObject *, Uint32 *))PYGAMEAPI_GET_SLOT(base, 8))
-
-#define pg_UintFromObjIndex \
-    (*(int (*)(PyObject *, int, Uint32 *))PYGAMEAPI_GET_SLOT(base, 9))
-
-#define pg_mod_autoinit (*(int (*)(const char *))PYGAMEAPI_GET_SLOT(base, 10))
-
-#define pg_mod_autoquit (*(void (*)(const char *))PYGAMEAPI_GET_SLOT(base, 11))
-
-#define pg_RGBAFromObj \
-    (*(int (*)(PyObject *, Uint8 *))PYGAMEAPI_GET_SLOT(base, 12))
-
-#define pgBuffer_AsArrayInterface \
-    (*(PyObject * (*)(Py_buffer *)) PYGAMEAPI_GET_SLOT(base, 13))
-
-#define pgBuffer_AsArrayStruct \
-    (*(PyObject * (*)(Py_buffer *)) PYGAMEAPI_GET_SLOT(base, 14))
-
-#define pgObject_GetBuffer \
-    (*(int (*)(PyObject *, pg_buffer *, int))PYGAMEAPI_GET_SLOT(base, 15))
-
-#define pgBuffer_Release (*(void (*)(pg_buffer *))PYGAMEAPI_GET_SLOT(base, 16))
-
-#define pgDict_AsBuffer \
-    (*(int (*)(pg_buffer *, PyObject *, int))PYGAMEAPI_GET_SLOT(base, 17))
-
-#define pgExc_BufferError ((PyObject *)PYGAMEAPI_GET_SLOT(base, 18))
-
-#define pg_GetDefaultWindow \
-    (*(SDL_Window * (*)(void)) PYGAMEAPI_GET_SLOT(base, 19))
-
-#define pg_SetDefaultWindow \
-    (*(void (*)(SDL_Window *))PYGAMEAPI_GET_SLOT(base, 20))
-
-#define pg_GetDefaultWindowSurface \
-    (*(pgSurfaceObject * (*)(void)) PYGAMEAPI_GET_SLOT(base, 21))
-
-#define pg_SetDefaultWindowSurface \
-    (*(void (*)(pgSurfaceObject *))PYGAMEAPI_GET_SLOT(base, 22))
-
-#define pg_EnvShouldBlendAlphaSDL2 \
-    (*(char *(*)(void))PYGAMEAPI_GET_SLOT(base, 23))
-
-#define pg_DoubleFromObj \
-    (*(int (*)(PyObject *, double *))PYGAMEAPI_GET_SLOT(base, 24))
-
-#define pg_DoubleFromObjIndex \
-    (*(int (*)(PyObject *, int, double *))PYGAMEAPI_GET_SLOT(base, 25))
-
-#define pg_TwoDoublesFromObj \
-    (*(int (*)(PyObject *, double *, double *))PYGAMEAPI_GET_SLOT(base, 26))
-
-#define import_pygame_base() IMPORT_PYGAME_MODULE(base)
-#endif /* ~PYGAMEAPI_BASE_INTERNAL */
-
-typedef struct {
-    PyObject_HEAD SDL_Rect r;
-    PyObject *weakreflist;
-} pgRectObject;
-
-#define pgRect_AsRect(x) (((pgRectObject *)x)->r)
-#ifndef PYGAMEAPI_RECT_INTERNAL
-#define pgRect_Type (*(PyTypeObject *)PYGAMEAPI_GET_SLOT(rect, 0))
-
-#define pgRect_Check(x) ((x)->ob_type == &pgRect_Type)
-#define pgRect_New (*(PyObject * (*)(SDL_Rect *)) PYGAMEAPI_GET_SLOT(rect, 1))
-
-#define pgRect_New4 \
-    (*(PyObject * (*)(int, int, int, int)) PYGAMEAPI_GET_SLOT(rect, 2))
-
-#define pgRect_FromObject \
-    (*(SDL_Rect * (*)(PyObject *, SDL_Rect *)) PYGAMEAPI_GET_SLOT(rect, 3))
-
-#define pgRect_Normalize (*(void (*)(SDL_Rect *))PYGAMEAPI_GET_SLOT(rect, 4))
-
-#define import_pygame_rect() IMPORT_PYGAME_MODULE(rect)
-#endif /* ~PYGAMEAPI_RECT_INTERNAL */
-
-/*
- * JOYSTICK module
- */
-typedef struct pgJoystickObject {
-    PyObject_HEAD int id;
-    SDL_Joystick *joy;
-
-    /* Joysticks form an intrusive linked list.
+    /* Here we define PGPOST_* events, events that act as a one-to-one
+     * proxy for SDL events (and some extra events too!), the proxy is used
+     * internally when pygame users use event.post()
      *
-     * Note that we don't maintain refcounts for these so they are weakrefs
-     * from the Python side.
-     */
-    struct pgJoystickObject *next;
-    struct pgJoystickObject *prev;
-} pgJoystickObject;
+     * At a first glance, these may look redundant, but they are really
+     * important, especially with event blocking. If proxy events are
+     * not there, blocked events dont make it to our event filter, and
+     * that can break a lot of stuff.
+     *
+     * IMPORTANT NOTE: Do not post events directly with these proxy types,
+     * use the appropriate functions from event.c, that handle these proxy
+     * events for you.
+     * Proxy events are for internal use only */
+    PGPOST_EVENTBEGIN, /* mark start of proxy-events */
+    PGPOST_ACTIVEEVENT = PGPOST_EVENTBEGIN,
+    PGPOST_APP_TERMINATING,
+    PGPOST_APP_LOWMEMORY,
+    PGPOST_APP_WILLENTERBACKGROUND,
+    PGPOST_APP_DIDENTERBACKGROUND,
+    PGPOST_APP_WILLENTERFOREGROUND,
+    PGPOST_APP_DIDENTERFOREGROUND,
+    PGPOST_AUDIODEVICEADDED,
+    PGPOST_AUDIODEVICEREMOVED,
+    PGPOST_CLIPBOARDUPDATE,
+    PGPOST_CONTROLLERAXISMOTION,
+    PGPOST_CONTROLLERBUTTONDOWN,
+    PGPOST_CONTROLLERBUTTONUP,
+    PGPOST_CONTROLLERDEVICEADDED,
+    PGPOST_CONTROLLERDEVICEREMOVED,
+    PGPOST_CONTROLLERDEVICEREMAPPED,
+    PGPOST_CONTROLLERTOUCHPADDOWN,
+    PGPOST_CONTROLLERTOUCHPADMOTION,
+    PGPOST_CONTROLLERTOUCHPADUP,
+    PGPOST_CONTROLLERSENSORUPDATE,
+    PGPOST_DOLLARGESTURE,
+    PGPOST_DOLLARRECORD,
+    PGPOST_DROPFILE,
+    PGPOST_DROPTEXT,
+    PGPOST_DROPBEGIN,
+    PGPOST_DROPCOMPLETE,
+    PGPOST_FINGERMOTION,
+    PGPOST_FINGERDOWN,
+    PGPOST_FINGERUP,
+    PGPOST_KEYDOWN,
+    PGPOST_KEYMAPCHANGED,
+    PGPOST_KEYUP,
+    PGPOST_JOYAXISMOTION,
+    PGPOST_JOYBALLMOTION,
+    PGPOST_JOYHATMOTION,
+    PGPOST_JOYBUTTONDOWN,
+    PGPOST_JOYBUTTONUP,
+    PGPOST_JOYDEVICEADDED,
+    PGPOST_JOYDEVICEREMOVED,
+    PGPOST_LOCALECHANGED,
+    PGPOST_MIDIIN,
+    PGPOST_MIDIOUT,
+    PGPOST_MOUSEMOTION,
+    PGPOST_MOUSEBUTTONDOWN,
+    PGPOST_MOUSEBUTTONUP,
+    PGPOST_MOUSEWHEEL,
+    PGPOST_MULTIGESTURE,
+    PGPOST_NOEVENT,
+    PGPOST_QUIT,
+    PGPOST_RENDER_TARGETS_RESET,
+    PGPOST_RENDER_DEVICE_RESET,
+    PGPOST_SYSWMEVENT,
+    PGPOST_TEXTEDITING,
+    PGPOST_TEXTINPUT,
+    PGPOST_VIDEORESIZE,
+    PGPOST_VIDEOEXPOSE,
+    PGPOST_WINDOWSHOWN,
+    PGPOST_WINDOWHIDDEN,
+    PGPOST_WINDOWEXPOSED,
+    PGPOST_WINDOWMOVED,
+    PGPOST_WINDOWRESIZED,
+    PGPOST_WINDOWSIZECHANGED,
+    PGPOST_WINDOWMINIMIZED,
+    PGPOST_WINDOWMAXIMIZED,
+    PGPOST_WINDOWRESTORED,
+    PGPOST_WINDOWENTER,
+    PGPOST_WINDOWLEAVE,
+    PGPOST_WINDOWFOCUSGAINED,
+    PGPOST_WINDOWFOCUSLOST,
+    PGPOST_WINDOWCLOSE,
+    PGPOST_WINDOWTAKEFOCUS,
+    PGPOST_WINDOWHITTEST,
+    PGPOST_WINDOWICCPROFCHANGED,
+    PGPOST_WINDOWDISPLAYCHANGED,
 
-#define pgJoystick_AsID(x) (((pgJoystickObject *)x)->id)
-#define pgJoystick_AsSDL(x) (((pgJoystickObject *)x)->joy)
+    PGE_USEREVENT, /* this event must stay in this position only */
 
-#ifndef PYGAMEAPI_JOYSTICK_INTERNAL
-#define pgJoystick_Type (*(PyTypeObject *)PYGAMEAPI_GET_SLOT(joystick, 0))
+    PG_NUMEVENTS =
+        SDL_LASTEVENT /* Not an event. Indicates end of user events. */
+} PygameEventCode;
 
-#define pgJoystick_Check(x) ((x)->ob_type == &pgJoystick_Type)
-#define pgJoystick_New (*(PyObject * (*)(int)) PYGAMEAPI_GET_SLOT(joystick, 1))
+/* SDL1 ACTIVEEVENT state attribute can take the following values */
+/* These constant values are directly picked from SDL1 source */
+#define SDL_APPMOUSEFOCUS 0x01
+#define SDL_APPINPUTFOCUS 0x02
+#define SDL_APPACTIVE 0x04
 
-#define import_pygame_joystick() IMPORT_PYGAME_MODULE(joystick)
-#endif
+/* Surface flags: based on SDL 1.2 flags */
+typedef enum {
+    PGS_SWSURFACE = 0x00000000,
+    PGS_HWSURFACE = 0x00000001,
+    PGS_ASYNCBLIT = 0x00000004,
 
-/*
- * DISPLAY module
- */
+    PGS_ANYFORMAT = 0x10000000,
+    PGS_HWPALETTE = 0x20000000,
+    PGS_DOUBLEBUF = 0x40000000,
+    PGS_FULLSCREEN = 0x80000000,
+    PGS_SCALED = 0x00000200,
 
-typedef struct {
-    Uint32 hw_available : 1;
-    Uint32 wm_available : 1;
-    Uint32 blit_hw : 1;
-    Uint32 blit_hw_CC : 1;
-    Uint32 blit_hw_A : 1;
-    Uint32 blit_sw : 1;
-    Uint32 blit_sw_CC : 1;
-    Uint32 blit_sw_A : 1;
-    Uint32 blit_fill : 1;
-    Uint32 video_mem;
-    SDL_PixelFormat *vfmt;
-    SDL_PixelFormat vfmt_data;
-    int current_w;
-    int current_h;
-} pg_VideoInfo;
+    PGS_OPENGL = 0x00000002,
+    PGS_OPENGLBLIT = 0x0000000A,
+    PGS_RESIZABLE = 0x00000010,
+    PGS_NOFRAME = 0x00000020,
+    PGS_SHOWN = 0x00000040,  /* Added from SDL 2 */
+    PGS_HIDDEN = 0x00000080, /* Added from SDL 2 */
 
-typedef struct {
-    PyObject_HEAD pg_VideoInfo info;
-} pgVidInfoObject;
+    PGS_HWACCEL = 0x00000100,
+    PGS_SRCCOLORKEY = 0x00001000,
+    PGS_RLEACCELOK = 0x00002000,
+    PGS_RLEACCEL = 0x00004000,
+    PGS_SRCALPHA = 0x00010000,
+    PGS_PREALLOC = 0x01000000
+} PygameSurfaceFlags;
 
-#define pgVidInfo_AsVidInfo(x) (((pgVidInfoObject *)x)->info)
+// TODO Implement check below in a way that does not break CI
+/* New buffer protocol (PEP 3118) implemented on all supported Py versions.
+#if !defined(Py_TPFLAGS_HAVE_NEWBUFFER)
+#error No support for PEP 3118/Py_TPFLAGS_HAVE_NEWBUFFER. Please use a
+supported Python version. #endif */
 
-#ifndef PYGAMEAPI_DISPLAY_INTERNAL
-#define pgVidInfo_Type (*(PyTypeObject *)PYGAMEAPI_GET_SLOT(display, 0))
-
-#define pgVidInfo_Check(x) ((x)->ob_type == &pgVidInfo_Type)
-#define pgVidInfo_New \
-    (*(PyObject * (*)(pg_VideoInfo *)) PYGAMEAPI_GET_SLOT(display, 1))
-
-#define import_pygame_display() IMPORT_PYGAME_MODULE(display)
-#endif /* ~PYGAMEAPI_DISPLAY_INTERNAL */
-
-/*
- * SURFACE module
- */
-struct pgSubSurface_Data;
-struct SDL_Surface;
-
-typedef struct {
-    PyObject_HEAD struct SDL_Surface *surf;
-    int owner;
-    struct pgSubSurface_Data *subsurface; /* ptr to subsurface data (if a
-                                           * subsurface)*/
-    PyObject *weakreflist;
-    PyObject *locklist;
-    PyObject *dependency;
-} pgSurfaceObject;
-#define pgSurface_AsSurface(x) (((pgSurfaceObject *)x)->surf)
-
-#ifndef PYGAMEAPI_SURFACE_INTERNAL
-#define pgSurface_Type (*(PyTypeObject *)PYGAMEAPI_GET_SLOT(surface, 0))
-
-#define pgSurface_Check(x) \
-    (PyObject_IsInstance((x), (PyObject *)&pgSurface_Type))
-#define pgSurface_New2                            \
-    (*(pgSurfaceObject * (*)(SDL_Surface *, int)) \
-         PYGAMEAPI_GET_SLOT(surface, 1))
-
-#define pgSurface_SetSurface                                              \
-    (*(int (*)(pgSurfaceObject *, SDL_Surface *, int))PYGAMEAPI_GET_SLOT( \
-        surface, 3))
-
-#define pgSurface_Blit                                                       \
-    (*(int (*)(pgSurfaceObject *, pgSurfaceObject *, SDL_Rect *, SDL_Rect *, \
-               int))PYGAMEAPI_GET_SLOT(surface, 2))
-
-#define import_pygame_surface()         \
-    do {                                \
-        IMPORT_PYGAME_MODULE(surface);  \
-        if (PyErr_Occurred() != NULL)   \
-            break;                      \
-        IMPORT_PYGAME_MODULE(surflock); \
+#define RAISE(x, y) (PyErr_SetString((x), (y)), NULL)
+#define DEL_ATTR_NOT_SUPPORTED_CHECK(name, value)                            \
+    do {                                                                     \
+        if (!value) {                                                        \
+            PyErr_Format(PyExc_AttributeError, "Cannot delete attribute %s", \
+                         name);                                              \
+            return -1;                                                       \
+        }                                                                    \
     } while (0)
 
-#define pgSurface_New(surface) pgSurface_New2((surface), 1)
-#define pgSurface_NewNoOwn(surface) pgSurface_New2((surface), 0)
-
-#endif /* ~PYGAMEAPI_SURFACE_INTERNAL */
-
-/*
- * SURFLOCK module
- * auto imported/initialized by surface
- */
-#ifndef PYGAMEAPI_SURFLOCK_INTERNAL
-#define pgLifetimeLock_Type (*(PyTypeObject *)PYGAMEAPI_GET_SLOT(surflock, 0))
-
-#define pgLifetimeLock_Check(x) ((x)->ob_type == &pgLifetimeLock_Type)
-
-#define pgSurface_Prep(x) \
-    if ((x)->subsurface)  \
-    (*(*(void (*)(pgSurfaceObject *))PYGAMEAPI_GET_SLOT(surflock, 1)))(x)
-
-#define pgSurface_Unprep(x) \
-    if ((x)->subsurface)    \
-    (*(*(void (*)(pgSurfaceObject *))PYGAMEAPI_GET_SLOT(surflock, 2)))(x)
-
-#define pgSurface_Lock \
-    (*(int (*)(pgSurfaceObject *))PYGAMEAPI_GET_SLOT(surflock, 3))
-
-#define pgSurface_Unlock \
-    (*(int (*)(pgSurfaceObject *))PYGAMEAPI_GET_SLOT(surflock, 4))
-
-#define pgSurface_LockBy \
-    (*(int (*)(pgSurfaceObject *, PyObject *))PYGAMEAPI_GET_SLOT(surflock, 5))
-
-#define pgSurface_UnlockBy \
-    (*(int (*)(pgSurfaceObject *, PyObject *))PYGAMEAPI_GET_SLOT(surflock, 6))
-
-#define pgSurface_LockLifetime \
-    (*(PyObject * (*)(PyObject *, PyObject *)) PYGAMEAPI_GET_SLOT(surflock, 7))
-#endif
+#define DEL_ATTR_NOT_SUPPORTED_CHECK_NO_NAME(value)                           \
+    do {                                                                      \
+        if (!value) {                                                         \
+            PyErr_SetString(PyExc_AttributeError, "Cannot delete attribute"); \
+            return -1;                                                        \
+        }                                                                     \
+    } while (0)
 
 /*
- * EVENT module
- */
-typedef struct pgEventObject pgEventObject;
-
-#ifndef PYGAMEAPI_EVENT_INTERNAL
-#define pgEvent_Type (*(PyTypeObject *)PYGAMEAPI_GET_SLOT(event, 0))
-
-#define pgEvent_Check(x) ((x)->ob_type == &pgEvent_Type)
-
-#define pgEvent_New \
-    (*(PyObject * (*)(SDL_Event *)) PYGAMEAPI_GET_SLOT(event, 1))
-
-#define pgEvent_New2 \
-    (*(PyObject * (*)(int, PyObject *)) PYGAMEAPI_GET_SLOT(event, 2))
-
-#define pgEvent_FillUserEvent \
-    (*(int (*)(pgEventObject *, SDL_Event *))PYGAMEAPI_GET_SLOT(event, 3))
-
-#define pg_EnableKeyRepeat (*(int (*)(int, int))PYGAMEAPI_GET_SLOT(event, 4))
-
-#define pg_GetKeyRepeat (*(void (*)(int *, int *))PYGAMEAPI_GET_SLOT(event, 5))
-
-#define import_pygame_event() IMPORT_PYGAME_MODULE(event)
-#endif
-
-/*
- * RWOBJECT module
- * the rwobject are only needed for C side work, not accessible from python.
- */
-#ifndef PYGAMEAPI_RWOBJECT_INTERNAL
-#define pgRWops_FromObject \
-    (*(SDL_RWops * (*)(PyObject *, char **)) PYGAMEAPI_GET_SLOT(rwobject, 0))
-
-#define pgRWops_IsFileObject \
-    (*(int (*)(SDL_RWops *))PYGAMEAPI_GET_SLOT(rwobject, 1))
-
-#define pg_EncodeFilePath \
-    (*(PyObject * (*)(PyObject *, PyObject *)) PYGAMEAPI_GET_SLOT(rwobject, 2))
-
-#define pg_EncodeString                                                    \
-    (*(PyObject * (*)(PyObject *, const char *, const char *, PyObject *)) \
-         PYGAMEAPI_GET_SLOT(rwobject, 3))
-
-#define pgRWops_FromFileObject \
-    (*(SDL_RWops * (*)(PyObject *)) PYGAMEAPI_GET_SLOT(rwobject, 4))
-
-#define pgRWops_ReleaseObject \
-    (*(int (*)(SDL_RWops *))PYGAMEAPI_GET_SLOT(rwobject, 5))
-
-#define import_pygame_rwobject() IMPORT_PYGAME_MODULE(rwobject)
-
-#endif
-
-/*
- * PixelArray module
- */
-#ifndef PYGAMEAPI_PIXELARRAY_INTERNAL
-#define PyPixelArray_Type ((PyTypeObject *)PYGAMEAPI_GET_SLOT(pixelarray, 0))
-
-#define PyPixelArray_Check(x) ((x)->ob_type == &PyPixelArray_Type)
-#define PyPixelArray_New (*(PyObject * (*)) PYGAMEAPI_GET_SLOT(pixelarray, 1))
-
-#define import_pygame_pixelarray() IMPORT_PYGAME_MODULE(pixelarray)
-#endif /* PYGAMEAPI_PIXELARRAY_INTERNAL */
-
-/*
- * Color module
- */
-typedef struct pgColorObject pgColorObject;
-
-#ifndef PYGAMEAPI_COLOR_INTERNAL
-#define pgColor_Type (*(PyObject *)PYGAMEAPI_GET_SLOT(color, 0))
-
-#define pgColor_Check(x) ((x)->ob_type == &pgColor_Type)
-#define pgColor_New (*(PyObject * (*)(Uint8 *)) PYGAMEAPI_GET_SLOT(color, 1))
-
-#define pgColor_NewLength \
-    (*(PyObject * (*)(Uint8 *, Uint8)) PYGAMEAPI_GET_SLOT(color, 3))
-
-#define pg_RGBAFromColorObj \
-    (*(int (*)(PyObject *, Uint8 *))PYGAMEAPI_GET_SLOT(color, 2))
-
-#define pg_RGBAFromFuzzyColorObj \
-    (*(int (*)(PyObject *, Uint8 *))PYGAMEAPI_GET_SLOT(color, 4))
-
-#define pgColor_AsArray(x) (((pgColorObject *)x)->data)
-#define pgColor_NumComponents(x) (((pgColorObject *)x)->len)
-
-#define import_pygame_color() IMPORT_PYGAME_MODULE(color)
-#endif /* PYGAMEAPI_COLOR_INTERNAL */
-
-/*
- * Math module
- */
-#ifndef PYGAMEAPI_MATH_INTERNAL
-#define pgVector2_Check(x) \
-    ((x)->ob_type == (PyTypeObject *)PYGAMEAPI_GET_SLOT(math, 0))
-
-#define pgVector3_Check(x) \
-    ((x)->ob_type == (PyTypeObject *)PYGAMEAPI_GET_SLOT(math, 1))
-/*
-#define pgVector2_New                                             \
-    (*(PyObject*(*))  \
-        PYGAMEAPI_GET_SLOT(PyGAME_C_API, 1))
-*/
-#define import_pygame_math() IMPORT_PYGAME_MODULE(math)
-#endif /* PYGAMEAPI_MATH_INTERNAL */
-
-#define IMPORT_PYGAME_MODULE _IMPORT_PYGAME_MODULE
-
-/*
- * base pygame API slots
- * disable slots with NO_PYGAME_C_API
- */
-#ifdef PYGAME_H
-PYGAMEAPI_DEFINE_SLOTS(base);
-PYGAMEAPI_DEFINE_SLOTS(rect);
-PYGAMEAPI_DEFINE_SLOTS(cdrom);
-PYGAMEAPI_DEFINE_SLOTS(joystick);
-PYGAMEAPI_DEFINE_SLOTS(display);
-PYGAMEAPI_DEFINE_SLOTS(surface);
-PYGAMEAPI_DEFINE_SLOTS(surflock);
-PYGAMEAPI_DEFINE_SLOTS(event);
-PYGAMEAPI_DEFINE_SLOTS(rwobject);
-PYGAMEAPI_DEFINE_SLOTS(pixelarray);
-PYGAMEAPI_DEFINE_SLOTS(color);
-PYGAMEAPI_DEFINE_SLOTS(math);
-#else  /* ~PYGAME_H */
-PYGAMEAPI_EXTERN_SLOTS(base);
-PYGAMEAPI_EXTERN_SLOTS(rect);
-PYGAMEAPI_EXTERN_SLOTS(cdrom);
-PYGAMEAPI_EXTERN_SLOTS(joystick);
-PYGAMEAPI_EXTERN_SLOTS(display);
-PYGAMEAPI_EXTERN_SLOTS(surface);
-PYGAMEAPI_EXTERN_SLOTS(surflock);
-PYGAMEAPI_EXTERN_SLOTS(event);
-PYGAMEAPI_EXTERN_SLOTS(rwobject);
-PYGAMEAPI_EXTERN_SLOTS(pixelarray);
-PYGAMEAPI_EXTERN_SLOTS(color);
-PYGAMEAPI_EXTERN_SLOTS(math);
-#endif /* ~PYGAME_H */
-
-#endif /* PYGAME_H */
-
-/*  Use the end of this file for other cross module inline utility
- *  functions There seems to be no good reason to stick to macro only
- *  functions in Python 3.
+ * Initialization checks
  */
 
-static PG_INLINE PyObject *
-pg_tuple_couple_from_values_int(int val1, int val2)
-{
-    /* This function turns two input integers into a python tuple object.
-     * Currently, 5th November 2022, this is faster than using Py_BuildValue
-     * to do the same thing.
-     */
-    PyObject *tup = PyTuple_New(2);
-    if (!tup) {
-        return NULL;
+#define VIDEO_INIT_CHECK()            \
+    if (!SDL_WasInit(SDL_INIT_VIDEO)) \
+    return RAISE(pgExc_SDLError, "video system not initialized")
+
+#define JOYSTICK_INIT_CHECK()            \
+    if (!SDL_WasInit(SDL_INIT_JOYSTICK)) \
+    return RAISE(pgExc_SDLError, "joystick system not initialized")
+
+/* thread check */
+#ifdef WITH_THREAD
+#define PG_CHECK_THREADS() (1)
+#else /* ~WITH_THREAD */
+#define PG_CHECK_THREADS() \
+    (RAISE(PyExc_NotImplementedError, "Python built without thread support"))
+#endif /* ~WITH_THREAD */
+
+#define PyType_Init(x) (((x).ob_type) = &PyType_Type)
+
+/* CPython 3.6 had initial and undocumented FASTCALL support, but we play it
+ * safe by not relying on implementation details */
+#if PY_VERSION_HEX < 0x03070000
+
+/* Macro for naming a pygame fastcall wrapper function */
+#define PG_FASTCALL_NAME(func) _##func##_fastcall_wrap
+
+/* used to forward declare compat functions */
+#define PG_DECLARE_FASTCALL_FUNC(func, self_type) \
+    static PyObject *PG_FASTCALL_NAME(func)(self_type * self, PyObject * args)
+
+/* Using this macro on a function defined with the FASTCALL calling convention
+ * adds a wrapper definition that uses regular python VARARGS convention.
+ * Since it is guaranteed that the 'args' object is a tuple, we can directly
+ * call PySequence_Fast_ITEMS and PyTuple_GET_SIZE on it (which are macros that
+ * assume the same, and don't do error checking) */
+#define PG_WRAP_FASTCALL_FUNC(func, self_type)                            \
+    PG_DECLARE_FASTCALL_FUNC(func, self_type)                             \
+    {                                                                     \
+        return func(self, (PyObject *const *)PySequence_Fast_ITEMS(args), \
+                    PyTuple_GET_SIZE(args));                              \
     }
 
-    PyObject *tmp = PyLong_FromLong(val1);
-    if (!tmp) {
-        Py_DECREF(tup);
-        return NULL;
-    }
-    PyTuple_SET_ITEM(tup, 0, tmp);
+#define PG_FASTCALL METH_VARARGS
 
-    tmp = PyLong_FromLong(val2);
-    if (!tmp) {
-        Py_DECREF(tup);
-        return NULL;
-    }
-    PyTuple_SET_ITEM(tup, 1, tmp);
+#else /* PY_VERSION_HEX >= 0x03070000 */
+/* compat macros are no-op on python versions that support fastcall */
+#define PG_FASTCALL_NAME(func) func
+#define PG_DECLARE_FASTCALL_FUNC(func, self_type)
+#define PG_WRAP_FASTCALL_FUNC(func, self_type)
 
-    return tup;
-}
+#define PG_FASTCALL METH_FASTCALL
 
-static PG_INLINE PyObject *
-pg_tuple_triple_from_values_int(int val1, int val2, int val3)
-{
-    /* This function turns three input integers into a python tuple object.
-     * Currently, 5th November 2022, this is faster than using Py_BuildValue
-     * to do the same thing.
-     */
-    PyObject *tup = PyTuple_New(3);
-    if (!tup) {
-        return NULL;
-    }
+#endif /* PY_VERSION_HEX >= 0x03070000 */
 
-    PyObject *tmp = PyLong_FromLong(val1);
-    if (!tmp) {
-        Py_DECREF(tup);
-        return NULL;
-    }
-    PyTuple_SET_ITEM(tup, 0, tmp);
+/*
+ * event module internals
+ */
+struct pgEventObject {
+    PyObject_HEAD int type;
+    PyObject *dict;
+};
 
-    tmp = PyLong_FromLong(val2);
-    if (!tmp) {
-        Py_DECREF(tup);
-        return NULL;
-    }
-    PyTuple_SET_ITEM(tup, 1, tmp);
+/*
+ * surflock module internals
+ */
+typedef struct {
+    PyObject_HEAD PyObject *surface;
+    PyObject *lockobj;
+    PyObject *weakrefs;
+} pgLifetimeLockObject;
 
-    tmp = PyLong_FromLong(val3);
-    if (!tmp) {
-        Py_DECREF(tup);
-        return NULL;
-    }
-    PyTuple_SET_ITEM(tup, 2, tmp);
+/*
+ * surface module internals
+ */
+struct pgSubSurface_Data {
+    PyObject *owner;
+    int pixeloffset;
+    int offsetx, offsety;
+};
 
-    return tup;
-}
+/*
+ * color module internals
+ */
+struct pgColorObject {
+    PyObject_HEAD Uint8 data[4];
+    Uint8 len;
+};
+
+/*
+ * include public API
+ */
+#include "include/_pygame.h"
+
+/* Slot counts.
+ * Remember to keep these constants up to date.
+ */
+
+#define PYGAMEAPI_RECT_NUMSLOTS 5
+#define PYGAMEAPI_JOYSTICK_NUMSLOTS 2
+#define PYGAMEAPI_DISPLAY_NUMSLOTS 2
+#define PYGAMEAPI_SURFACE_NUMSLOTS 4
+#define PYGAMEAPI_SURFLOCK_NUMSLOTS 8
+#define PYGAMEAPI_RWOBJECT_NUMSLOTS 6
+#define PYGAMEAPI_PIXELARRAY_NUMSLOTS 2
+#define PYGAMEAPI_COLOR_NUMSLOTS 5
+#define PYGAMEAPI_MATH_NUMSLOTS 2
+#define PYGAMEAPI_BASE_NUMSLOTS 27
+#define PYGAMEAPI_EVENT_NUMSLOTS 6
+
+#endif /* _PYGAME_INTERNAL_H */
